@@ -3,48 +3,48 @@ import numpy as np
 import soundfile as sf
 import argparse
 
-def bilateral_convert(input_path, output_path, mode='beat', toggle_freq=1.0):
+# def bilateral_convert(input_path, output_path, mode='beat', toggle_freq=1.0):
 
-    print("Loading audio...")
-    y, sr = librosa.load(input_path, sr=None, mono=True)
-    n = len(y)
+#     print("Loading audio...")
+#     y, sr = librosa.load(input_path, sr=None, mono=True)
+#     n = len(y)
 
-    print("Processing mode:", mode)
+#     print("Processing mode:", mode)
 
-    if mode == 'beat':
-        tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
-        beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
+#     if mode == 'beat':
+#         tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+#         beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
 
-        if beat_times and beat_times[-1] < n/sr:
-            beat_times.append(n/sr)
+#         if beat_times and beat_times[-1] < n/sr:
+#             beat_times.append(n/sr)
 
-        times = beat_times
+#         times = beat_times
 
-    else:
-        half_period = 1.0 / (2 * toggle_freq)
-        times = np.arange(0, n/sr + half_period, half_period).tolist()
+#     else:
+#         half_period = 1.0 / (2 * toggle_freq)
+#         times = np.arange(0, n/sr + half_period, half_period).tolist()
 
-        if times[-1] < n/sr:
-            times.append(n/sr)
+#         if times[-1] < n/sr:
+#             times.append(n/sr)
 
-    out = np.zeros((n, 2), dtype=y.dtype)
-    left = True
+#     out = np.zeros((n, 2), dtype=y.dtype)
+#     left = True
 
-    for i in range(len(times)-1):
+#     for i in range(len(times)-1):
 
-        start_idx = int(times[i] * sr)
-        end_idx = int(times[i+1] * sr)
+#         start_idx = int(times[i] * sr)
+#         end_idx = int(times[i+1] * sr)
 
-        if left:
-            out[start_idx:end_idx, 0] = y[start_idx:end_idx]
-        else:
-            out[start_idx:end_idx, 1] = y[start_idx:end_idx]
+#         if left:
+#             out[start_idx:end_idx, 0] = y[start_idx:end_idx]
+#         else:
+#             out[start_idx:end_idx, 1] = y[start_idx:end_idx]
 
-        left = not left
+#         left = not left
 
-    print("Saving output...")
-    sf.write(output_path, out, sr)
-    print("Done! Saved to:", output_path)
+#     print("Saving output...")
+#     sf.write(output_path, out, sr)
+#     print("Done! Saved to:", output_path)
 
 
 # if __name__ == "__main__":
@@ -73,10 +73,50 @@ def bilateral_convert(input_path, output_path, mode='beat', toggle_freq=1.0):
 #         toggle_freq=args.freq
 #     )
 
+def bilateral_convert(input_path, output_path, mode='beat', toggle_freq=2.0):
+    print("Loading audio...")
+    y, sr = librosa.load(input_path, sr=None, mono=True)
+    n = len(y)
+    print("Processing mode:", mode)
+
+    if mode == 'beat':
+        tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+        print(f"Detected tempo: {float(tempo):.1f} BPM")
+        beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
+
+        if not beat_times:
+            print("Warning: No beats detected, falling back to fixed mode.")
+            mode = 'fixed'  # fall through
+        else:
+            times = [0.0] + beat_times          # ← fix: don't drop pre-beat audio
+            if times[-1] < n / sr:
+                times.append(n / sr)
+
+    if mode == 'fixed':
+        half_period = 1.0 / (2 * toggle_freq)
+        times = np.arange(0, n / sr, half_period).tolist()
+        times.append(n / sr)                    # always cap at audio end
+
+    out = np.zeros((n, 2), dtype=y.dtype)
+    left = True
+    for i in range(len(times) - 1):
+        start_idx = int(times[i] * sr)
+        end_idx = min(int(times[i + 1] * sr), n)  # clamp to avoid OOB
+        if left:
+            out[start_idx:end_idx, 0] = y[start_idx:end_idx]
+        else:
+            out[start_idx:end_idx, 1] = y[start_idx:end_idx]
+        left = not left
+
+    print("Saving output...")
+    sf.write(output_path, out, sr)
+    print("Done! Saved to:", output_path)
+
+    
 if __name__ == "__main__":
 
-    input_path = input("Enter input file path: ")
-    output_path = input("Enter output file path: ")
+    input_path = input("Enter input file path: ").strip()
+    output_path = input("Enter output file path: ").strip()
     mode = input("Mode (beat/fixed): ").strip().lower()
 
     freq = 2.0
